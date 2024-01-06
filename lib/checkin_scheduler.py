@@ -41,6 +41,7 @@ class CheckInScheduler:
             flights.extend(self._get_flights(confirmation_number))
 
         logger.debug("%d total flights were found", len(flights))
+        self._modify_scheduled_flights(flights)
         new_flights = self._get_new_flights(flights)
         self._schedule_flights(new_flights)
 
@@ -89,6 +90,26 @@ class CheckInScheduler:
         logger.debug("Successfully retrieved reservation information")
         reservation_info = response["viewReservationViewPage"]["bounds"]
         return reservation_info
+    
+    def _modify_scheduled_flights(self, flights: List[Flight]) -> None:
+        for flight in flights:
+            if flight not in self.flights:
+                continue
+            
+            flight_idx = self.flights.index(flight)
+            if flight.departure_time != self.flights[flight_idx].departure_time:
+
+                print(
+                    f"Flight from {flight.departure_airport} to {flight.destination_airport} has changed time from "
+                    f"{self.flights[flight_idx].departure_time} UTC to {flight.departure_time} UTC "
+                    f"Rescheduling its check-in\n"
+                )  # Don't log as it has sensitive information
+
+                self.checkin_handlers[flight_idx].stop_check_in()
+                self.checkin_handlers[flight_idx] = CheckInHandler(self, flight, self.reservation_monitor.lock)
+                self.checkin_handlers[flight_idx].schedule_check_in()
+                self.flights[flight_idx] = flight
+
 
     def _get_new_flights(self, flights: List[Flight]) -> List[Flight]:
         """Retrieve a list of all flights that are not already scheduled for check-in"""
